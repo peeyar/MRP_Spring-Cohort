@@ -40,3 +40,8 @@ export interface LLMDetails {
   next_action: string;
   outreach_draft: string;
 }
+
+export interface AuthUser {
+  id: string;
+  email: string | undefined;
+}

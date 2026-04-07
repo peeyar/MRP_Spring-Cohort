@@ -6,6 +6,7 @@ import type {
   Preferences,
 } from "./types";
 import { fetchDetails } from "./api";
+import { supabase } from "./supabase";
 
 /* ── Upload Area ── */
 
@@ -629,6 +630,213 @@ export function ErrorAlert({
       >
         ✕
       </button>
+    </div>
+  );
+}
+
+/* ── Login / Sign Up Page ── */
+
+export function LoginPage() {
+  const [mode, setMode] = useState<"login" | "signup">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
+
+  const inputStyle: React.CSSProperties = {
+    padding: "10px 14px",
+    borderRadius: 10,
+    border: "1px solid #e2e8f0",
+    fontSize: 14,
+    outline: "none",
+    transition: "border-color 0.2s, box-shadow 0.2s",
+    width: "100%",
+    boxSizing: "border-box",
+    background: "#fff",
+  };
+
+  const labelStyle: React.CSSProperties = {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#475569",
+    marginBottom: 6,
+    display: "block",
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      if (mode === "login") {
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        setSuccessMsg("Check your email for a confirmation link before signing in.");
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Something went wrong. Please try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      minHeight: "100vh",
+      background: "linear-gradient(135deg, #f0f4ff 0%, #faf5ff 50%, #fff1f2 100%)",
+      fontFamily: "'Inter', system-ui, -apple-system, sans-serif",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: "24px",
+    }}>
+      <div style={{ marginBottom: 32, textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <span style={{ fontSize: 22, fontWeight: 700, color: "#1e293b", letterSpacing: "-0.02em" }}>WarmPath</span>
+          <span style={{ fontSize: 11, fontWeight: 600, color: "#8b5cf6", background: "#ede9fe", padding: "2px 8px", borderRadius: 6 }}>Beta</span>
+        </div>
+        <p style={{ margin: "10px 0 0", fontSize: 15, color: "#64748b" }}>
+          {mode === "login" ? "Sign in to your account" : "Create your account"}
+        </p>
+      </div>
+
+      <div style={{
+        background: "#fff",
+        borderRadius: 16,
+        padding: "32px 36px",
+        width: "100%",
+        maxWidth: 420,
+        boxShadow: "0 1px 3px rgba(0,0,0,0.04), 0 4px 12px rgba(0,0,0,0.03)",
+        border: "1px solid rgba(226,232,240,0.7)",
+      }}>
+        {/* Mode toggle */}
+        <div style={{
+          display: "flex",
+          background: "#f1f5f9",
+          borderRadius: 10,
+          padding: 4,
+          marginBottom: 28,
+        }}>
+          {(["login", "signup"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(null); setSuccessMsg(null); }}
+              style={{
+                flex: 1,
+                padding: "8px 0",
+                fontSize: 13,
+                fontWeight: 600,
+                background: mode === m ? "#fff" : "transparent",
+                color: mode === m ? "#6366f1" : "#64748b",
+                border: "none",
+                borderRadius: 8,
+                cursor: "pointer",
+                boxShadow: mode === m ? "0 1px 3px rgba(0,0,0,0.08)" : "none",
+                transition: "all 0.2s ease",
+              }}
+            >
+              {m === "login" ? "Sign In" : "Sign Up"}
+            </button>
+          ))}
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: 16 }}>
+            <label htmlFor="auth-email" style={labelStyle}>Email</label>
+            <input
+              id="auth-email"
+              type="email"
+              autoComplete="email"
+              placeholder="you@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={inputStyle}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(129,140,248,0.15)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              required
+            />
+          </div>
+
+          <div style={{ marginBottom: 24 }}>
+            <label htmlFor="auth-password" style={labelStyle}>Password</label>
+            <input
+              id="auth-password"
+              type="password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              placeholder={mode === "signup" ? "At least 6 characters" : "••••••••"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={inputStyle}
+              onFocus={(e) => { e.currentTarget.style.borderColor = "#818cf8"; e.currentTarget.style.boxShadow = "0 0 0 3px rgba(129,140,248,0.15)"; }}
+              onBlur={(e) => { e.currentTarget.style.borderColor = "#e2e8f0"; e.currentTarget.style.boxShadow = "none"; }}
+              required
+            />
+          </div>
+
+          {error && (
+            <div style={{
+              background: "#fef2f2",
+              border: "1px solid #fecaca",
+              color: "#991b1b",
+              padding: "10px 14px",
+              borderRadius: 10,
+              fontSize: 13,
+              marginBottom: 16,
+            }}>
+              {error}
+            </div>
+          )}
+
+          {successMsg && (
+            <div style={{
+              background: "#f0fdf4",
+              border: "1px solid #bbf7d0",
+              color: "#15803d",
+              padding: "10px 14px",
+              borderRadius: 10,
+              fontSize: 13,
+              marginBottom: 16,
+            }}>
+              {successMsg}
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || !email || !password}
+            style={{
+              width: "100%",
+              padding: "12px 24px",
+              fontSize: 14,
+              fontWeight: 600,
+              background: (loading || !email || !password) ? "#cbd5e1" : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+              color: "#fff",
+              border: "none",
+              borderRadius: 10,
+              cursor: (loading || !email || !password) ? "not-allowed" : "pointer",
+              transition: "all 0.2s ease",
+              boxShadow: (!loading && email && password) ? "0 2px 8px rgba(99,102,241,0.3)" : "none",
+              letterSpacing: "0.01em",
+            }}
+          >
+            {loading
+              ? (mode === "login" ? "Signing in..." : "Creating account...")
+              : (mode === "login" ? "Sign In" : "Create Account")
+            }
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
