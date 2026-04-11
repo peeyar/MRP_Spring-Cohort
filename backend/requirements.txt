@@ -3,3 +3,9 @@ uvicorn
 python-multipart
 python-dateutil
 httpx
+python-dotenv
+openai
+arize-phoenix
+arize-phoenix-otel
+openinference-instrumentation-openai
+opentelemetry-instrumentation-fastapi

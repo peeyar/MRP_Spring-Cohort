@@ -25,6 +25,16 @@ Respond as JSON only — a single object mapping company name to type.
 Example: {{"Acme Corp": "startup", "Big Bank": "enterprise"}}"""
 
 
+def _get_client():
+    """Return an AsyncOpenAI client, or None if no API key is set."""
+    from openai import AsyncOpenAI
+    api_key = os.environ.get("LLM_API_KEY", "")
+    if not api_key:
+        return None
+    base_url = os.environ.get("LLM_BASE_URL", "").strip() or None
+    return AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=60.0)
+
+
 async def classify_company_types(company_names: list[str]) -> dict[str, str]:
     """Classify unknown companies via a single LLM call.
 
@@ -34,36 +44,22 @@ async def classify_company_types(company_names: list[str]) -> dict[str, str]:
     if not company_names:
         return {}
 
-    api_key = os.environ.get("LLM_API_KEY", "")
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-
-    if not api_key:
+    client = _get_client()
+    if not client:
         return {}
 
+    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
     prompt = _CLASSIFY_PROMPT.format(
         company_list="\n".join(f"- {name}" for name in company_names)
     )
 
     try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.0,
-                },
-            )
-            resp.raise_for_status()
-            body = resp.json()
-
-        content = body["choices"][0]["message"]["content"].strip()
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.0,
+        )
+        content = response.choices[0].message.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1] if "\n" in content else content[3:]
         if content.endswith("```"):
@@ -71,7 +67,6 @@ async def classify_company_types(company_names: list[str]) -> dict[str, str]:
         content = content.strip()
 
         parsed = json.loads(content)
-        # Validate and normalize: only keep valid types, lowercase the keys
         result: dict[str, str] = {}
         for name, ctype in parsed.items():
             ctype_lower = ctype.strip().lower()
@@ -159,17 +154,14 @@ def _build_fallback(result: CompanyResult, prefs: Preferences) -> LLMDetails:
     return LLMDetails(explanation=explanation, next_action=next_action, outreach_draft=outreach)
 
 
-async def generate_details(
-    result: CompanyResult, prefs: Preferences
-) -> LLMDetails:
+async def generate_details(result: CompanyResult, prefs: Preferences) -> LLMDetails:
     """Call OpenAI to generate details. Falls back on any error."""
-    api_key = os.environ.get("LLM_API_KEY", "")
-    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
-
-    if not api_key:
+    client = _get_client()
+    if not client:
         logger.warning("LLM_API_KEY not set — returning fallback content")
         return _build_fallback(result, prefs)
 
+    model = os.environ.get("LLM_MODEL", "gpt-4o-mini")
     prompt = _PROMPT_TEMPLATE.format(
         target_role=prefs.target_role,
         location=prefs.location or "Not specified",
@@ -183,27 +175,12 @@ async def generate_details(
     )
 
     try:
-        import httpx
-
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            resp = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.7,
-                },
-            )
-            resp.raise_for_status()
-            body = resp.json()
-
-        content = body["choices"][0]["message"]["content"]
-        # Strip markdown code fences if present
-        content = content.strip()
+        response = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.7,
+        )
+        content = response.choices[0].message.content.strip()
         if content.startswith("```"):
             content = content.split("\n", 1)[1] if "\n" in content else content[3:]
         if content.endswith("```"):
@@ -223,22 +200,27 @@ async def generate_details(
         return _build_fallback(result, prefs)
 
 
-async def generate_details_for_top(
-    results: list[CompanyResult], prefs: Preferences, limit: int = 15
+async def prefetch_details_background(
+    results: list[CompanyResult], prefs: Preferences
 ) -> None:
-    """Pre-generate details for the top N results in parallel, mutating each result in place."""
-    top = results[:limit]
-    if not top:
-        return
+    """Background task: generate and cache details for ranks 1–10 only.
 
-    details_list = await asyncio.gather(
-        *[generate_details(r, prefs) for r in top],
-        return_exceptions=True,
-    )
+    Runs after the /analyze response is sent. Ranks 11+ are generated on-demand
+    via /details when the user clicks a card.
+    """
+    import cache
 
-    for result, details in zip(top, details_list):
-        if isinstance(details, LLMDetails):
-            result.details = details
-        else:
-            # gather returned an exception — use fallback
-            result.details = _build_fallback(result, prefs)
+    sem = asyncio.Semaphore(3)
+
+    async def _fetch_and_cache(r: CompanyResult) -> None:
+        async with sem:
+            try:
+                details = await generate_details(r, prefs)
+                cache.set(r.contact_url, details)
+                logger.info("Background prefetch done: %s", r.company_name)
+            except Exception as e:
+                logger.error("Background prefetch failed for %s: %s", r.company_name, e)
+
+    batch = results[:10]
+    if batch:
+        await asyncio.gather(*[_fetch_and_cache(r) for r in batch])

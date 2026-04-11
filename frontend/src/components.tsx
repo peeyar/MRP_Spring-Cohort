@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, type MutableRefObject } from "react";
 import type {
   CompanyResult,
   LLMDetails,
@@ -289,9 +289,8 @@ function CompanyResultCard({
   cachedDetails: LLMDetails | undefined;
   onCacheDetails: (key: string, details: LLMDetails) => void;
 }) {
-  const preloaded = result.details ?? null;
   const [expanded, setExpanded] = useState(false);
-  const [details, setDetails] = useState<LLMDetails | null>(cachedDetails ?? preloaded);
+  const [details, setDetails] = useState<LLMDetails | null>(cachedDetails ?? null);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -471,15 +470,16 @@ const PAGE_SIZE = 25;
 export function ResultsList({
   results,
   preferences,
+  detailsCache,
 }: {
   results: CompanyResult[];
   preferences: Preferences | null;
+  detailsCache: MutableRefObject<Record<string, LLMDetails>>;
 }) {
   const [showCount, setShowCount] = useState(PAGE_SIZE);
-  const detailsCacheRef = useRef<Record<string, LLMDetails>>({});
 
   const handleCacheDetails = (key: string, details: LLMDetails) => {
-    detailsCacheRef.current[key] = details;
+    detailsCache.current[key] = details;
   };
 
   if (results.length === 0) {
@@ -522,7 +522,7 @@ export function ResultsList({
             key={`${r.company_name}-${i}`}
             result={r}
             preferences={preferences}
-            cachedDetails={detailsCacheRef.current[cacheKey]}
+            cachedDetails={detailsCache.current[cacheKey]}
             onCacheDetails={handleCacheDetails}
           />
         );

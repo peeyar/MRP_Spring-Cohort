@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 import { analyzeConnections } from "./api";
@@ -10,7 +10,7 @@ import {
   PreferencesForm,
   ResultsList,
 } from "./components";
-import type { AnalyzeResponse, AuthUser, Preferences } from "./types";
+import type { AnalyzeResponse, AuthUser, LLMDetails, Preferences } from "./types";
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined);
@@ -18,6 +18,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<AnalyzeResponse | null>(null);
   const [lastPrefs, setLastPrefs] = useState<Preferences | null>(null);
+  const detailsCache = useRef<Record<string, LLMDetails>>({});
 
   useEffect(() => {
     const backendUrl = import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -43,6 +44,7 @@ export default function App() {
   }, []);
 
   const handleSignOut = async () => {
+    detailsCache.current = {};
     await supabase.auth.signOut();
   };
 
@@ -186,7 +188,7 @@ export default function App() {
         {data && !loading && (
           <>
             <ParsingSummaryBar summary={data.parsing_summary} />
-            <ResultsList results={data.results} preferences={lastPrefs} />
+            <ResultsList results={data.results} preferences={lastPrefs} detailsCache={detailsCache} />
           </>
         )}
       </main>

@@ -68,7 +68,6 @@ class CompanyResult:
     path_label: str  # "Warm Path" | "Stretch Path" | "Explore"
     score: int  # 0–100
     contact_count: int  # Number of connections at this company
-    details: LLMDetails | None = None  # Pre-generated for top results
 
 
 @dataclass

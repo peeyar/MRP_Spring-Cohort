@@ -22,7 +22,6 @@ export interface CompanyResult {
   path_label: "Warm Path" | "Stretch Path" | "Explore";
   score: number;
   contact_count: number;
-  details?: LLMDetails | null;
 }
 
 export interface AnalyzeResponse {
