@@ -20,6 +20,8 @@ origins = [
     "http://localhost:5173",
     "http://localhost:3000",
     "https://warm-path-beta.vercel.app",
+    "http://3.215.104.193",
+    "http://mywarmpath.com",
 ]
 
 app.add_middleware(
