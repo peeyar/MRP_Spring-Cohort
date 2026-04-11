@@ -289,8 +289,9 @@ function CompanyResultCard({
   cachedDetails: LLMDetails | undefined;
   onCacheDetails: (key: string, details: LLMDetails) => void;
 }) {
+  const preloaded = result.details ?? null;
   const [expanded, setExpanded] = useState(false);
-  const [details, setDetails] = useState<LLMDetails | null>(cachedDetails ?? null);
+  const [details, setDetails] = useState<LLMDetails | null>(cachedDetails ?? preloaded);
   const [loadingDetails, setLoadingDetails] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -303,10 +304,9 @@ function CompanyResultCard({
     }
     setExpanded(true);
 
-    if (details || cachedDetails) {
-      if (cachedDetails && !details) setDetails(cachedDetails);
-      return;
-    }
+    // Use pre-generated or cached details if available — no API call needed
+    if (details) return;
+    if (cachedDetails) { setDetails(cachedDetails); return; }
 
     if (!preferences) return;
 

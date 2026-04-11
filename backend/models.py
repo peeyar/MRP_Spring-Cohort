@@ -48,6 +48,15 @@ class ContactSelection:
 
 
 @dataclass
+class LLMDetails:
+    """Response from the LLM Advisor."""
+
+    explanation: str  # 2–3 sentences
+    next_action: str  # 1 sentence
+    outreach_draft: str  # 3–5 sentences
+
+
+@dataclass
 class CompanyResult:
     """Output object for one company in the ranked results."""
 
@@ -59,6 +68,7 @@ class CompanyResult:
     path_label: str  # "Warm Path" | "Stretch Path" | "Explore"
     score: int  # 0–100
     contact_count: int  # Number of connections at this company
+    details: LLMDetails | None = None  # Pre-generated for top results
 
 
 @dataclass
@@ -78,12 +88,3 @@ class ParsingSummary:
     excluded_rows: int  # Rows excluded (with reasons)
     exclusion_reasons: list[ExcludedRow] = field(default_factory=list)
     unique_companies: int = 0  # Distinct normalized company names
-
-
-@dataclass
-class LLMDetails:
-    """Response from the LLM Advisor."""
-
-    explanation: str  # 2–3 sentences
-    next_action: str  # 1 sentence
-    outreach_draft: str  # 3–5 sentences

@@ -1,5 +1,6 @@
 """LLM Advisor — generates explanation, next action, outreach draft, and company type classification via OpenAI."""
 
+import asyncio
 import json
 import logging
 import os
@@ -82,15 +83,6 @@ async def classify_company_types(company_names: list[str]) -> dict[str, str]:
         logger.error("Company classification LLM call failed: %s", e)
         return {}
 
-_FALLBACK = LLMDetails(
-    explanation="Relevance based on your preferences.",
-    next_action="Reach out via LinkedIn message.",
-    outreach_draft=(
-        "Hi {contact_name}, I noticed we're connected on LinkedIn. "
-        "I'm exploring {target_role} opportunities and would love to learn "
-        "about your experience at {company}. Would you be open to a quick chat?"
-    ),
-)
 
 _PROMPT_TEMPLATE = """You are a career networking advisor. Given the following context, produce three outputs.
 
@@ -112,16 +104,59 @@ Format your response as JSON: {{"explanation": "...", "next_action": "...", "out
 
 
 def _build_fallback(result: CompanyResult, prefs: Preferences) -> LLMDetails:
-    """Return fallback content with placeholders filled in."""
-    return LLMDetails(
-        explanation=_FALLBACK.explanation,
-        next_action=_FALLBACK.next_action,
-        outreach_draft=_FALLBACK.outreach_draft.format(
-            contact_name=result.contact_name,
-            target_role=prefs.target_role,
-            company=result.company_name,
-        ),
-    )
+    """Return personalized fallback content based on available company/contact data."""
+    contact = result.contact_name
+    title = result.contact_title or "professional"
+    company = result.company_name
+    role = prefs.target_role
+
+    if result.path_label == "Warm Path":
+        explanation = (
+            f"{contact}'s role as {title} at {company} aligns closely with your target of {role}. "
+            f"With a score of {result.score}/100, this is a high-priority connection worth reaching out to promptly. "
+            f"A warm introduction here could fast-track your job search."
+        )
+        next_action = (
+            f"Send {contact} a personalized LinkedIn message referencing your shared connection "
+            f"and your interest in {role} opportunities at {company}."
+        )
+    elif result.path_label == "Stretch Path":
+        explanation = (
+            f"{contact} is a {title} at {company} — a worthwhile stretch connection for your {role} search. "
+            f"Their insider perspective could surface unadvertised openings or referral opportunities. "
+            f"A brief, genuine outreach has a good chance of getting a response."
+        )
+        next_action = (
+            f"Reach out to {contact} on LinkedIn with a concise note about your {role} search "
+            f"and ask if they'd be open to a 15-minute informational chat about {company}."
+        )
+    else:
+        explanation = (
+            f"{contact} works at {company} as {title}. "
+            f"While this is an exploratory connection, they may have visibility into {role} openings "
+            f"or be able to refer you to the right person internally."
+        )
+        next_action = (
+            f"Send {contact} a brief, casual LinkedIn message to get on their radar "
+            f"for future {role} opportunities at {company}."
+        )
+
+    if result.contact_email:
+        outreach = (
+            f"Hi {contact},\n\n"
+            f"I hope you're doing well! I'm currently exploring {role} opportunities "
+            f"and came across your profile — I'd love to hear about your experience at {company}. "
+            f"Would you be open to a quick 15-minute call at your convenience?\n\n"
+            f"Thanks so much,\n[Your name]"
+        )
+    else:
+        outreach = (
+            f"Hi {contact}, I noticed we're connected on LinkedIn and that you're at {company}. "
+            f"I'm currently exploring {role} opportunities and would love to learn about your experience there. "
+            f"Would you be open to a quick chat? Happy to work around your schedule."
+        )
+
+    return LLMDetails(explanation=explanation, next_action=next_action, outreach_draft=outreach)
 
 
 async def generate_details(
@@ -176,12 +211,34 @@ async def generate_details(
         content = content.strip()
 
         parsed = json.loads(content)
+        fallback = _build_fallback(result, prefs)
         return LLMDetails(
-            explanation=parsed.get("explanation", _FALLBACK.explanation),
-            next_action=parsed.get("next_action", _FALLBACK.next_action),
-            outreach_draft=parsed.get("outreach_draft", _FALLBACK.outreach_draft),
+            explanation=parsed.get("explanation", fallback.explanation),
+            next_action=parsed.get("next_action", fallback.next_action),
+            outreach_draft=parsed.get("outreach_draft", fallback.outreach_draft),
         )
 
     except Exception as e:
         logger.error("LLM call failed: %s", e)
         return _build_fallback(result, prefs)
+
+
+async def generate_details_for_top(
+    results: list[CompanyResult], prefs: Preferences, limit: int = 15
+) -> None:
+    """Pre-generate details for the top N results in parallel, mutating each result in place."""
+    top = results[:limit]
+    if not top:
+        return
+
+    details_list = await asyncio.gather(
+        *[generate_details(r, prefs) for r in top],
+        return_exceptions=True,
+    )
+
+    for result, details in zip(top, details_list):
+        if isinstance(details, LLMDetails):
+            result.details = details
+        else:
+            # gather returned an exception — use fallback
+            result.details = _build_fallback(result, prefs)

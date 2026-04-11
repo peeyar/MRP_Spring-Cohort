@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse
 from contact_selector import select_best_contact
 from csv_parser import parse_csv
 from grouper import group_by_company
-from llm_advisor import classify_company_types
+from llm_advisor import classify_company_types, generate_details_for_top
 from models import Preferences, ParsingSummary
 from normalizer import normalize_connections
 from ranker import rank_companies, get_unknown_companies
@@ -81,6 +81,9 @@ async def analyze(
             enriched_types = await classify_company_types(unknown)
 
     results = rank_companies(groups, selections, prefs, enriched_types)
+
+    # --- Pre-generate details for top 15 ---
+    await generate_details_for_top(results, prefs, limit=15)
 
     # --- Build parsing summary ---
     summary = ParsingSummary(
