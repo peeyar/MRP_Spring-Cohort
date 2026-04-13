@@ -22,6 +22,7 @@ origins = [
     "https://warm-path-beta.vercel.app",
     "http://3.215.104.193",
     "http://mywarmpath.com",
+    "https://mywarmpath.com",
 ]
 
 app.add_middleware(

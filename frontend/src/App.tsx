@@ -28,6 +28,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // Handle email confirmation / OAuth callback (PKCE flow sends ?code=...)
+    const url = new URL(window.location.href);
+    const code = url.searchParams.get("code");
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        if (error) console.error("Auth callback error:", error.message);
+        window.history.replaceState({}, "", window.location.pathname);
+      });
+    }
+
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session);
     });
