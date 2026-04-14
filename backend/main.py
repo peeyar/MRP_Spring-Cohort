@@ -23,6 +23,8 @@ origins = [
     "http://3.215.104.193",
     "http://mywarmpath.com",
     "https://mywarmpath.com",
+    "http://www.mywarmpath.com",
+    "https://www.mywarmpath.com",
 ]
 
 app.add_middleware(
